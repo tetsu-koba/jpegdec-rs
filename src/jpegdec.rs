@@ -1,4 +1,4 @@
-pub fn decode_jpeg_to_i422(
+pub fn decode_to_i422(
     jpeg_data: &[u8],
     i422_data: &mut [u8],
     width: u32,
@@ -30,7 +30,7 @@ pub fn decode_jpeg_to_i422(
     };
 
     // decompress the JPEG into the image
-    decompressor.decompress_to_yuv(&jpeg_data, image.as_deref_mut())?;
+    decompressor.decompress_to_yuv(jpeg_data, image.as_deref_mut())?;
 
     Ok(())
 }
@@ -49,7 +49,7 @@ mod tests {
         let width: u32 = 160;
         let height: u32 = 90;
         let mut i422_data = vec![0u8; (width * height * 2) as _];
-        decode_jpeg_to_i422(&jpeg_data, &mut i422_data, width, height)?;
+        decode_to_i422(&jpeg_data, &mut i422_data, width, height)?;
 
         let expected_data = std::fs::read(expected_output_path)?;
         assert_eq!(i422_data, expected_data);
