@@ -42,7 +42,7 @@ fn decode_mjpeg(infile: &mut File, outfile: &mut File, width: u32, height: u32) 
     let mut i422_data = vec![0u8; (width * height * 2) as usize];
     let mut state = State::St0;
 
-    loop {
+    'outer: loop {
         let n = infile.read(&mut buffer)?;
         if n == 0 {
             break;
@@ -74,12 +74,17 @@ fn decode_mjpeg(infile: &mut File, outfile: &mut File, width: u32, height: u32) 
                     write_buffer.push(v);
                     if v == JPEG_END1 {
                         state = State::St0;
-                        write_buffer.clear();
-                        match jpegdec::decode_to_i422(&write_buffer, &mut i422_data, width, height)
+                        if let Err(e) =
+                            jpegdec::decode_to_i422(&write_buffer, &mut i422_data, width, height)
                         {
-                            Ok(_) => outfile.write_all(&i422_data)?,
-                            Err(_) => continue,
+                            eprintln!("{e:?}");
+                        } else if let Err(e) = outfile.write_all(&i422_data) {
+                            if e.kind() == std::io::ErrorKind::BrokenPipe {
+                                break 'outer;
+                            }
+                            return Err(e);
                         }
+                        write_buffer.clear();
                     } else if v != JPEG_END0 {
                         state = State::St2;
                     }
