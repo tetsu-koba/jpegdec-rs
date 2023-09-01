@@ -15,7 +15,7 @@ const JPEG_START1: u8 = 0xd8;
 const JPEG_END0: u8 = 0xff;
 const JPEG_END1: u8 = 0xd9;
 
-fn main() -> io::Result<()> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 5 {
@@ -28,8 +28,8 @@ fn main() -> io::Result<()> {
 
     let mut infile = File::open(&args[1])?;
     let mut outfile = File::create(&args[2])?;
-    let width: u32 = args[3].parse().unwrap();
-    let height: u32 = args[4].parse().unwrap();
+    let width: u32 = args[3].parse()?;
+    let height: u32 = args[4].parse()?;
 
     decode_mjpeg(&mut infile, &mut outfile, width, height)?;
 
