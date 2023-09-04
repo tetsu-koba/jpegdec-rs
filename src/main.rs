@@ -1,7 +1,9 @@
 use std::env;
 use std::fs::File;
 use std::io::{self, Read, Write};
+use std::os::fd::AsRawFd;
 mod jpegdec;
+mod pipe;
 
 enum State {
     St0, // waiting for JPEG_START0
@@ -37,7 +39,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn decode_mjpeg(infile: &mut File, outfile: &mut File, width: u32, height: u32) -> io::Result<()> {
-    let mut buffer = vec![0u8; 64 * 1024];
+    let bufsize = if cfg!(linux) && pipe::is_pipe(infile.as_raw_fd()) {
+        pipe::get_pipe_max_size()?
+    } else {
+        64 * 1024
+    };
+    let is_pipe_output = if cfg!(linux) && pipe::is_pipe(outfile.as_raw_fd()) {
+        pipe::set_pipe_max_size(outfile.as_raw_fd())?;
+        true
+    } else {
+        false
+    };
+    let mut buffer = vec![0u8; bufsize];
     let mut write_buffer = Vec::new();
     let mut i422_data = vec![0u8; (width * height * 2) as usize];
     let mut state = State::St0;
@@ -78,7 +91,11 @@ fn decode_mjpeg(infile: &mut File, outfile: &mut File, width: u32, height: u32) 
                             jpegdec::decode_to_i422(&write_buffer, &mut i422_data, width, height)
                         {
                             eprintln!("{e:?}");
-                        } else if let Err(e) = outfile.write_all(&i422_data) {
+                        } else if let Err(e) = if is_pipe_output {
+                            pipe::vmsplice_single_buffer(&i422_data, outfile.as_raw_fd())
+                        } else {
+                            outfile.write_all(&i422_data)
+                        } {
                             if e.kind() == std::io::ErrorKind::BrokenPipe {
                                 break 'outer;
                             }
