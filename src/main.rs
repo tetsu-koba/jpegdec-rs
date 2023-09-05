@@ -1,8 +1,9 @@
 use std::env;
 use std::fs::File;
 use std::io::{self, Read, Write};
-use std::os::fd::AsRawFd;
 mod jpegdec;
+
+#[cfg(target_os = "linux")]
 mod pipe;
 
 enum State {
@@ -39,17 +40,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn decode_mjpeg(infile: &mut File, outfile: &mut File, width: u32, height: u32) -> io::Result<()> {
-    let bufsize = if cfg!(linux) && pipe::is_pipe(infile.as_raw_fd()) {
+    #[cfg(target_os = "linux")]
+    let bufsize = if pipe::is_pipe(infile) {
         pipe::get_pipe_max_size()?
     } else {
         64 * 1024
     };
-    let is_pipe_output = if cfg!(linux) && pipe::is_pipe(outfile.as_raw_fd()) {
-        pipe::set_pipe_max_size(outfile.as_raw_fd())?;
+    #[cfg(target_os = "linux")]
+    let is_pipe_output = if pipe::is_pipe(outfile) {
+        pipe::set_pipe_max_size(outfile)?;
         true
     } else {
         false
     };
+
+    #[cfg(not(target_os = "linux"))]
+    let bufsize = 64 * 1024;
+
     let mut buffer = vec![0u8; bufsize];
     let mut write_buffer = Vec::new();
     let mut i422_data = vec![0u8; (width * height * 2) as usize];
@@ -91,17 +98,25 @@ fn decode_mjpeg(infile: &mut File, outfile: &mut File, width: u32, height: u32) 
                             jpegdec::decode_to_i422(&write_buffer, &mut i422_data, width, height)
                         {
                             eprintln!("{e:?}");
-                        } else if let Err(e) = if is_pipe_output {
-                            pipe::vmsplice_single_buffer(&i422_data, outfile.as_raw_fd())
                         } else {
-                            outfile.write_all(&i422_data)
-                        } {
-                            if e.kind() == std::io::ErrorKind::BrokenPipe {
-                                break 'outer;
+                            #[cfg(target_os = "linux")]
+                            let res = if is_pipe_output {
+                                pipe::vmsplice_single_buffer(&i422_data, outfile)
+                            } else {
+                                outfile.write_all(&i422_data)
+                            };
+
+                            #[cfg(not(target_os = "linux"))]
+                            let res = outfile.write_all(&i422_data);
+
+                            if let Err(e) = res {
+                                if e.kind() == std::io::ErrorKind::BrokenPipe {
+                                    break 'outer;
+                                }
+                                return Err(e);
                             }
-                            return Err(e);
+                            write_buffer.clear();
                         }
-                        write_buffer.clear();
                     } else if v != JPEG_END0 {
                         state = State::St2;
                     }
