@@ -115,8 +115,8 @@ fn decode_mjpeg(infile: &mut File, outfile: &mut File, width: u32, height: u32) 
                                 }
                                 return Err(e);
                             }
-                            write_buffer.clear();
                         }
+                        write_buffer.clear();
                     } else if v != JPEG_END0 {
                         state = State::St2;
                     }
