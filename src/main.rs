@@ -1,6 +1,6 @@
 use std::env;
 use std::fs::File;
-use std::io::{self, Read, Write};
+use std::io::{self, Read};
 mod jpegdec;
 
 #[cfg(target_os = "linux")]
@@ -29,30 +29,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(1);
     }
 
-    let mut infile = File::open(&args[1])?;
-    let mut outfile = File::create(&args[2])?;
+    let infile = File::open(&args[1])?;
+    let outfile = File::create(&args[2])?;
     let width: u32 = args[3].parse()?;
     let height: u32 = args[4].parse()?;
 
-    decode_mjpeg(&mut infile, &mut outfile, width, height)?;
+    decode_mjpeg(infile, outfile, width, height)?;
 
     Ok(())
 }
 
-fn decode_mjpeg(infile: &mut File, outfile: &mut File, width: u32, height: u32) -> io::Result<()> {
+fn decode_mjpeg(mut infile: File, outfile: File, width: u32, height: u32) -> io::Result<()> {
     #[cfg(target_os = "linux")]
-    let bufsize = if pipe::is_pipe(infile) {
+    let bufsize = if pipe::is_pipe(&infile) {
         pipe::get_pipe_max_size()?
     } else {
         64 * 1024
     };
     #[cfg(target_os = "linux")]
-    let is_pipe_output = if pipe::is_pipe(outfile) {
-        pipe::set_pipe_max_size(outfile)?;
-        true
-    } else {
-        false
-    };
+    let mut writer = pipe::LinuxWriter::new(outfile);
 
     #[cfg(not(target_os = "linux"))]
     let bufsize = 64 * 1024;
@@ -100,11 +95,7 @@ fn decode_mjpeg(infile: &mut File, outfile: &mut File, width: u32, height: u32) 
                             eprintln!("{e:?}");
                         } else {
                             #[cfg(target_os = "linux")]
-                            let res = if is_pipe_output {
-                                pipe::vmsplice_single_buffer(&i422_data, outfile)
-                            } else {
-                                outfile.write_all(&i422_data)
-                            };
+                            let res = writer.write_all(&i422_data);
 
                             #[cfg(not(target_os = "linux"))]
                             let res = outfile.write_all(&i422_data);

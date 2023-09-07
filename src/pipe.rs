@@ -71,3 +71,29 @@ pub fn vmsplice_single_buffer_fd(mut buf: &[u8], fd: RawFd) -> Result<(), io::Er
 pub fn vmsplice_single_buffer(buf: &[u8], f: &File) -> Result<(), io::Error> {
     vmsplice_single_buffer_fd(buf, f.as_raw_fd())
 }
+
+#[cfg(target_os = "linux")]
+pub struct LinuxWriter {
+    file: File,
+    is_pipe: bool,
+}
+
+#[cfg(target_os = "linux")]
+impl LinuxWriter {
+    pub fn new(file: File) -> Self {
+        let is_pipe = is_pipe(&file);
+        if is_pipe {
+            _ = set_pipe_max_size(&file);
+        }
+        Self { file, is_pipe }
+    }
+
+    pub fn write_all(&mut self, data: &[u8]) -> Result<(), io::Error> {
+        if self.is_pipe {
+            vmsplice_single_buffer(data, &self.file)
+        } else {
+            use std::io::Write;
+            self.file.write_all(data)
+        }
+    }
+}
