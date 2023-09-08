@@ -73,14 +73,14 @@ pub fn vmsplice_single_buffer(buf: &[u8], f: &File) -> Result<(), io::Error> {
 }
 
 #[cfg(target_os = "linux")]
-pub struct LinuxWriter<'a> {
-    file: &'a mut File,
+pub struct LinuxWriter {
+    file: File,
     is_pipe: bool,
 }
 
 #[cfg(target_os = "linux")]
-impl <'a> LinuxWriter<'a> {
-    pub fn new(file: &'a mut File) -> Self {
+impl LinuxWriter {
+    pub fn new(file: File) -> Self {
         let is_pipe = is_pipe(&file);
         if is_pipe {
             _ = set_pipe_max_size(&file);

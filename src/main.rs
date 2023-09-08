@@ -39,7 +39,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn decode_mjpeg(mut infile: File, mut outfile: File, width: u32, height: u32) -> io::Result<()> {
+fn decode_mjpeg(mut infile: File, outfile: File, width: u32, height: u32) -> io::Result<()> {
     #[cfg(target_os = "linux")]
     let bufsize = if pipe::is_pipe(&infile) {
         pipe::get_pipe_max_size()?
@@ -47,7 +47,7 @@ fn decode_mjpeg(mut infile: File, mut outfile: File, width: u32, height: u32) ->
         64 * 1024
     };
     #[cfg(target_os = "linux")]
-    let mut writer = pipe::LinuxWriter::new(&mut outfile);
+    let mut writer = pipe::LinuxWriter::new(outfile);
 
     #[cfg(not(target_os = "linux"))]
     let bufsize = 64 * 1024;
