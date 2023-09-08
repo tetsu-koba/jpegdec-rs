@@ -96,7 +96,6 @@ impl Writer {
         if self.is_pipe {
             vmsplice_single_buffer(data, &self.file)
         } else {
-            use std::io::Write;
             self.file.write_all(data)
         }
     }
