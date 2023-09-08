@@ -1,12 +1,11 @@
-use nix::errno::Errno;
-use nix::fcntl::{fcntl, FcntlArg};
-use nix::fcntl::{vmsplice, SpliceFFlags};
 use std::fs::File;
-use std::io::{self, IoSlice};
+use std::io;
+use std::io::Write;
 use std::os::fd::AsRawFd;
 use std::os::unix::io::RawFd;
 
 // Check if the given file descriptor is a pipe
+#[allow(dead_code)]
 pub fn is_pipe_fd(fd: RawFd) -> bool {
     match nix::sys::stat::fstat(fd) {
         Ok(stat) => stat.st_mode & libc::S_IFMT == libc::S_IFIFO,
@@ -15,6 +14,7 @@ pub fn is_pipe_fd(fd: RawFd) -> bool {
 }
 
 // Check if the given file is a pipe
+#[allow(dead_code)]
 pub fn is_pipe(f: &File) -> bool {
     is_pipe_fd(f.as_raw_fd())
 }
@@ -34,6 +34,7 @@ pub fn get_pipe_max_size() -> Result<usize, io::Error> {
 // Set the size of the given pipe file descriptor to the maximum size
 #[cfg(target_os = "linux")]
 pub fn set_pipe_max_size_fd(fd: RawFd) -> Result<(), io::Error> {
+    use nix::fcntl::{fcntl, FcntlArg};
     let max_size: libc::c_int = get_pipe_max_size()? as _;
 
     // If the current size is less than the maximum size, set the pipe size to the maximum size
@@ -52,6 +53,9 @@ pub fn set_pipe_max_size(f: &File) -> Result<(), io::Error> {
 
 #[cfg(target_os = "linux")]
 pub fn vmsplice_single_buffer_fd(mut buf: &[u8], fd: RawFd) -> Result<(), io::Error> {
+    use nix::fcntl::{vmsplice, SpliceFFlags};
+    use std::io::IoSlice;
+
     if buf.is_empty() {
         return Ok(());
     };
@@ -61,7 +65,7 @@ pub fn vmsplice_single_buffer_fd(mut buf: &[u8], fd: RawFd) -> Result<(), io::Er
             Ok(n) if n == iov.len() => return Ok(()),
             Ok(n) if n != 0 => buf = &buf[n..],
             Ok(_) => unreachable!(),
-            Err(err) if err == Errno::EINTR => {}
+            Err(err) if err == nix::errno::Errno::EINTR => {}
             Err(err) => return Err(err.into()),
         }
     }
@@ -73,13 +77,13 @@ pub fn vmsplice_single_buffer(buf: &[u8], f: &File) -> Result<(), io::Error> {
 }
 
 #[cfg(target_os = "linux")]
-pub struct LinuxWriter {
+pub struct Writer {
     file: File,
     is_pipe: bool,
 }
 
 #[cfg(target_os = "linux")]
-impl LinuxWriter {
+impl Writer {
     pub fn new(file: File) -> Self {
         let is_pipe = is_pipe(&file);
         if is_pipe {
@@ -95,5 +99,21 @@ impl LinuxWriter {
             use std::io::Write;
             self.file.write_all(data)
         }
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+pub struct Writer {
+    file: File,
+}
+
+#[cfg(not(target_os = "linux"))]
+impl Writer {
+    pub fn new(file: File) -> Self {
+        Self { file }
+    }
+
+    pub fn write_all(&mut self, data: &[u8]) -> Result<(), io::Error> {
+        self.file.write_all(data)
     }
 }

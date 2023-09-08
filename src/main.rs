@@ -2,8 +2,6 @@ use std::env;
 use std::fs::File;
 use std::io::{self, Read};
 mod jpegdec;
-
-#[cfg(target_os = "linux")]
 mod pipe;
 
 enum State {
@@ -46,8 +44,7 @@ fn decode_mjpeg(mut infile: File, outfile: File, width: u32, height: u32) -> io:
     } else {
         64 * 1024
     };
-    #[cfg(target_os = "linux")]
-    let mut writer = pipe::LinuxWriter::new(outfile);
+    let mut writer = pipe::Writer::new(outfile);
 
     #[cfg(not(target_os = "linux"))]
     let bufsize = 64 * 1024;
@@ -93,19 +90,11 @@ fn decode_mjpeg(mut infile: File, outfile: File, width: u32, height: u32) -> io:
                             jpegdec::decode_to_i422(&write_buffer, &mut i422_data, width, height)
                         {
                             eprintln!("{e:?}");
-                        } else {
-                            #[cfg(target_os = "linux")]
-                            let res = writer.write_all(&i422_data);
-
-                            #[cfg(not(target_os = "linux"))]
-                            let res = outfile.write_all(&i422_data);
-
-                            if let Err(e) = res {
-                                if e.kind() == std::io::ErrorKind::BrokenPipe {
-                                    break 'outer;
-                                }
-                                return Err(e);
-                            }
+                        } else if let Err(e) = writer.write_all(&i422_data) {
+                            if e.kind() == std::io::ErrorKind::BrokenPipe {
+                                break 'outer;
+			    }
+                            return Err(e);
                         }
                         write_buffer.clear();
                     } else if v != JPEG_END0 {
